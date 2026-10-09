@@ -1,0 +1,241 @@
+{
+  "title": "Getting started with CSF 2.0",
+  "intro": "Seven stages, in the order most organisations find easiest. The Framework is not a checklist and there is no certificate at the end: the point is to know where you stand, decide where you want to be, and close the distance. Anything you can already do, do now; the order is advice, not a rule. A stage turns green when everything in it is done or marked as not applying to you.",
+  "stages": [
+    {
+      "id": "setup",
+      "name": "Set the product up",
+      "aim": "Get the tool ready and the right people into it. An hour's work, and nothing else goes well without it.",
+      "tasks": [
+        {
+          "id": "setup.people",
+          "title": "Add the people who will do the work",
+          "do": "Go to Users and add everyone who will record work here. Give them the smallest role that lets them do their job: Contributor to record work, Auditor or Read only for people who just need to see it.",
+          "why": "The Framework is a conversation between business and technical people. One person filling it in alone produces one person's opinion, and every change is recorded against a real name.",
+          "check": "users.beyondAdmin",
+          "goto": "people"
+        },
+        {
+          "id": "setup.email",
+          "title": "Turn on email",
+          "do": "In Settings, put in your mail server details and send yourself a test message.",
+          "why": "Without it nobody gets reminders about overdue work, and an administrator who forgets their password cannot get back in on their own.",
+          "check": "settings.smtp",
+          "goto": "settings"
+        },
+        {
+          "id": "setup.branding",
+          "title": "Put your logo on reports",
+          "do": "In Reports, upload your organisation's logo.",
+          "why": "Every PDF goes to your board, your customers or your insurer with your name on it. Takes a minute.",
+          "check": "settings.logo",
+          "goto": "reports"
+        },
+        {
+          "id": "setup.backup",
+          "title": "Keep a copy of the backup somewhere else",
+          "do": "A backup runs every night on its own; the line below says when it last ran. Open Backups, press Download on the newest one, and keep that file somewhere other than this server.",
+          "why": "Your profile is months of thinking. A backup that only exists on the same machine protects you from very little.",
+          "check": "jobs.backupRan",
+          "goto": "backups"
+        }
+      ]
+    },
+    {
+      "id": "context",
+      "name": "Know what you are protecting",
+      "aim": "GOVERN and IDENTIFY. What the organisation does, what it depends on, and who expects what of it.",
+      "tasks": [
+        {
+          "id": "context.scope",
+          "title": "Write down what this covers",
+          "do": "Open Policies. Scope is the box at the top. Write what this programme covers: which company, which services, which locations, which systems. Say plainly what is not covered.",
+          "why": "GV.OC asks you to understand your mission, your obligations and your dependencies. Without a written scope, every later question turns into an argument about what counts.",
+          "check": "programme.scope",
+          "goto": "policies"
+        },
+        {
+          "id": "context.assets",
+          "title": "List what you actually have",
+          "do": "In Assets, record your systems, services, data stores, devices and suppliers. Start with the twenty that matter most, give each one an owner and say how critical it is. The Sample library tab has over a hundred to start from.",
+          "why": "The whole of ID.AM is this list. Nearly every later outcome refers back to it, and the gaps in it are usually the surprises.",
+          "check": "registers.assets",
+          "goto": "assets"
+        },
+        {
+          "id": "context.owner",
+          "title": "Name who is accountable",
+          "do": "Decide who owns cyber security for the organisation, who decides on risk, and who they report to. Write it down and get it agreed.",
+          "why": "GV.RR asks for roles, responsibilities and authorities that people actually know about. \"Everyone is responsible\" means nobody is.",
+          "goto": "controls"
+        }
+      ]
+    },
+    {
+      "id": "tiers",
+      "name": "Decide how far you want to go",
+      "aim": "The Tiers: how deliberate your risk management is today, and how deliberate you intend it to be.",
+      "tasks": [
+        {
+          "id": "tiers.chosen",
+          "title": "Choose your current and target tiers",
+          "do": "Open Profile & Tiers and set both dimensions: where governance and risk management are today, and where you intend them to be. Tier 1 is ad hoc; Tier 4 is adaptive, learning from every event.",
+          "why": "A target tier is what stops this becoming a race to tick everything. Most organisations belong at Tier 2 or 3, and saying so out loud saves a great deal of arguing later.",
+          "check": "programme.tiers",
+          "goto": "profile"
+        },
+        {
+          "id": "tiers.agreed",
+          "title": "Get the target agreed by whoever pays for it",
+          "do": "Take the target tier to the person who signs off the budget and the risk appetite. Note their agreement in the box beside the tiers.",
+          "why": "The target decides how much work follows. Agreeing it now is a five-minute conversation; discovering the disagreement in month six is not.",
+          "goto": "profile"
+        }
+      ]
+    },
+    {
+      "id": "current",
+      "name": "Work out where you are now",
+      "aim": "Your current profile: for each of the 106 outcomes, what you actually do today.",
+      "tasks": [
+        {
+          "id": "current.read",
+          "title": "Read what each outcome is asking",
+          "do": "Open a few subcategories and read the guidance: what the outcome means, and what it looks like in practice.",
+          "why": "CSF outcomes are written in one line of formal English. Deciding what they mean for you, in your words, is most of the value of the exercise.",
+          "goto": "controls"
+        },
+        {
+          "id": "current.status",
+          "title": "Record where each one stands",
+          "do": "For each subcategory set a status: not started, in progress or implemented. Mark anything that genuinely does not apply, with a reason.",
+          "why": "This is the honest baseline. An optimistic one produces a profile nobody trusts, including the person who wrote it.",
+          "goto": "controls"
+        },
+        {
+          "id": "current.described",
+          "title": "Say what you do today, in your own words",
+          "do": "On each subcategory, fill in the current profile box: a sentence on what actually happens now. \"Backups run nightly; nobody has tested a restore\" is worth more than a status on its own.",
+          "why": "The Framework's value is this description, not the status. It is also what makes the target meaningful, and what a new colleague reads first.",
+          "check": "controls.currentProfile",
+          "goto": "controls"
+        },
+        {
+          "id": "current.owners",
+          "title": "Give every outcome an owner",
+          "do": "Set an owner on each subcategory that applies, and add their email if you want reminders about due dates.",
+          "why": "Somebody has to answer for each one. An outcome with nobody's name against it is one nobody is doing.",
+          "check": "controls.owned",
+          "goto": "controls"
+        }
+      ]
+    },
+    {
+      "id": "target",
+      "name": "Decide where you want to be",
+      "aim": "Your target profile: what good enough looks like for each outcome, given the risk you actually carry.",
+      "tasks": [
+        {
+          "id": "target.described",
+          "title": "Say what you want each outcome to look like",
+          "do": "On each subcategory, fill in the target profile box. Where today is good enough, say so and move on: \"as now\" is a legitimate target.",
+          "why": "The gap between the two boxes is your plan. Without a target, a profile is a description with nothing to do about it.",
+          "check": "controls.targetProfile",
+          "goto": "controls"
+        },
+        {
+          "id": "target.priorities",
+          "title": "Mark what matters most",
+          "do": "Set the priority on the outcomes where the gap matters. High for anything that would hurt the business, or that a customer or regulator asks about.",
+          "why": "You will not close every gap this year. Priorities are how the list becomes a plan rather than a wish.",
+          "goto": "controls"
+        }
+      ]
+    },
+    {
+      "id": "risk",
+      "name": "Work out what could go wrong",
+      "aim": "The risks behind the outcomes, so the plan follows the risk rather than the framework's running order.",
+      "tasks": [
+        {
+          "id": "risk.register",
+          "title": "Record your risks",
+          "do": "In Risks, write down what could realistically go wrong. Score each for likelihood and impact. The Sample library tab has around seventy-five to react to.",
+          "why": "GV.RM and ID.RA are about knowing and deciding, not about listing controls. Ten real risks beat a hundred copied from a template.",
+          "check": "registers.risks",
+          "goto": "risks"
+        },
+        {
+          "id": "risk.owners",
+          "title": "Give every risk an owner and a decision",
+          "do": "Name who owns each risk and say what you are doing: reduce it, accept it, transfer it or avoid it. An accepted risk needs somebody senior enough to accept it.",
+          "why": "A risk with no owner and no decision is a list entry. The Framework calls this the risk management strategy; in practice it is these two fields.",
+          "check": "risks.owned",
+          "goto": "risks"
+        },
+        {
+          "id": "risk.linked",
+          "title": "Link each risk to the outcomes that reduce it",
+          "do": "Open each risk you are reducing and attach the subcategories that deal with it.",
+          "why": "It shows the line from what worries you to what you are doing about it, and shows up fast when a serious risk has nothing behind it.",
+          "check": "risks.linked",
+          "goto": "risks"
+        }
+      ]
+    },
+    {
+      "id": "prove",
+      "name": "Collect the proof, then keep going",
+      "aim": "Evidence for what you claim, work for what is missing, and a habit that survives the first busy month.",
+      "tasks": [
+        {
+          "id": "prove.evidence",
+          "title": "Attach proof to what you have implemented",
+          "do": "In Evidence, record what proves each outcome and attach the file: policies, configuration exports, reports, training records.",
+          "why": "A customer questionnaire or an insurer will ask you to show it. Anything you gather now is something you do not have to find in a hurry later.",
+          "check": "evidence.any",
+          "goto": "evidence"
+        },
+        {
+          "id": "prove.linked",
+          "title": "Link each piece of proof to its outcome",
+          "do": "Open an evidence item and attach the subcategories it supports.",
+          "why": "Unlinked evidence is a folder of files. Linked evidence answers \"show me\" in one click.",
+          "check": "evidence.linked",
+          "goto": "evidence"
+        },
+        {
+          "id": "prove.dated",
+          "title": "Put a date on everything",
+          "do": "Record when each item was collected. Anything older than ninety days shows as needing a refresh.",
+          "why": "Proof goes stale. A configuration export from last year proves what was true last year.",
+          "check": "evidence.dated",
+          "goto": "evidence"
+        },
+        {
+          "id": "prove.gaps",
+          "title": "Turn the gaps into tasks",
+          "do": "Export the Gap report, pick out the gaps you marked High priority, and raise a task for each in Tasks with an owner and a due date.",
+          "why": "A profile nobody acted on is a document. Tasks with names and dates are what move the line.",
+          "check": "registers.tasks",
+          "goto": "tasks"
+        },
+        {
+          "id": "prove.report",
+          "title": "Show somebody where you stand",
+          "do": "Export the Executive summary and take it to your board, your owner or your biggest customer.",
+          "why": "GV.OV is about overseeing the strategy. Reporting produces the evidence for it, and it is how the programme keeps its funding.",
+          "check": "reports.exported",
+          "goto": "reports"
+        },
+        {
+          "id": "prove.routine",
+          "title": "Put a date in the diary to do this again",
+          "do": "Agree how often you will review the profile - every quarter works for most - and book it now.",
+          "why": "The Framework assumes improvement over time. The profile you write once and never revisit describes a company that no longer exists.",
+          "goto": "tasks"
+        }
+      ]
+    }
+  ]
+}

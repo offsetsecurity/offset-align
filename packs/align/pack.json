@@ -1,0 +1,27 @@
+{
+  "id": "align",
+  "product": "Offset Align",
+  "edition": "",
+  "framework": "NIST Cybersecurity Framework 2.0",
+  "frameworkShort": "NIST CSF 2.0",
+  "source": "NIST CSF 2.0 Core — U.S. Government work, not subject to copyright.",
+  "disclaimer": "Offset Align is not affiliated with, endorsed by, or certified by NIST.",
+  "contact": "info@offsetsecurity.net",
+  "features": {
+    "tiers": true,
+    "profiles": true,
+    "priorities": true,
+    "journey": true,
+    "ismsRegisters": true,
+    "calendar": true,
+    "help": true,
+    "demoData": true
+  },
+  "themeLabel": "Function",
+  "itemLabel": "Subcategory",
+  "counts": {
+    "functions": 6,
+    "categories": 22,
+    "subcategories": 106
+  }
+}
