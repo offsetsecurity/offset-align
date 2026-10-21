@@ -5,6 +5,7 @@ import { audit } from "../audit/audit.js";
 import { notFound } from "../lib/errors.js";
 import { packMeta } from "../lib/pack.js";
 import { REPORTS, renderReport } from "../reports/definitions.js";
+import { todayIso } from "../lib/time.js";
 
 /**
  * Reports.
@@ -52,7 +53,7 @@ export async function reportRoutes(app: FastifyInstance): Promise<void> {
       after: { title: spec.title, bytes: pdf.length },
     });
 
-    const stamp = new Date().toISOString().slice(0, 10);
+    const stamp = todayIso();
     const filename = `${spec.id}-${stamp}.pdf`;
 
     return reply
