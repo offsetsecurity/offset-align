@@ -118,6 +118,24 @@ export async function loadBranding(): Promise<{ logo: StoredLogo | null }> {
   }
 }
 
+/**
+ * The organisation's name, for the cover of a board paper. Kept apart from the
+ * logo because either can be set without the other.
+ */
+export async function loadOrganisation(): Promise<{ name: string }> {
+  const { rows } = await query<{ value: string }>(
+    "select value from settings where key = 'organisation'",
+  );
+  try {
+    const parsed = JSON.parse(rows[0]?.value ?? "{}") as { name?: unknown };
+    return { name: typeof parsed.name === "string" ? parsed.name : "" };
+  } catch {
+    return { name: "" };
+  }
+}
+
+const organisationBody = z.object({ name: z.string().trim().max(120) }).strict();
+
 /** Roughly how many bytes a data URI or SVG string actually carries. */
 function sizeOf(kind: "image" | "svg", data: string): number {
   if (kind === "svg") return Buffer.byteLength(data, "utf8");
@@ -182,6 +200,34 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       before: { logo: before.logo?.filename ?? null },
     });
     return { branding: { logo: null } };
+  });
+
+  app.get("/api/v1/settings/organisation", { preHandler: canRead }, async () => ({
+    organisation: await loadOrganisation(),
+  }));
+
+  app.put("/api/v1/settings/organisation", { preHandler: isAdmin }, async (request) => {
+    requireAuth(request);
+    const { name } = organisationBody.parse(request.body);
+    const before = await loadOrganisation();
+    if (name) {
+      await query(
+        `insert into settings (key, value) values ('organisation', $1)
+         on conflict (key) do update set value = excluded.value,
+                                         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
+        [JSON.stringify({ name })],
+      );
+    } else {
+      await query("delete from settings where key = 'organisation'");
+    }
+    await audit(request, {
+      action: "Organisation name set",
+      entity: "settings",
+      entityId: "organisation",
+      before: { name: before.name },
+      after: { name },
+    });
+    return { organisation: { name } };
   });
 
   // —— outgoing email ————————————————————

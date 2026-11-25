@@ -20,10 +20,57 @@ function csrfToken(): string {
   return match?.[1] ? decodeURIComponent(match[1]) : "";
 }
 
+/**
+ * The version (`updated_at`) of each record as this page last read it. A
+ * change to a record sends it back, and the server refuses the change if
+ * somebody else saved the record since (GL-5), instead of quietly overwriting
+ * their work. The version is forgotten the moment a change is sent, so a
+ * second change made before the first is answered (a box saved when it loses
+ * focus, then a tick box) is not refused as if somebody else had made it. It
+ * is learnt again from the answer to the change (the saved record, or for a
+ * file the x-record-version header) and whenever the record is read. After a refusal it is kept,
+ * so the change stays refused until the page is reloaded and shows the other
+ * person's change.
+ */
+const versions = new Map<string, string>();
+const RECORD_PATH = /\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+function remember(value: unknown, depth = 0): void {
+  if (depth > 3 || !value || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    for (const v of value) remember(v, depth + 1);
+    return;
+  }
+  const o = value as Record<string, unknown>;
+  if (typeof o["id"] === "string" && typeof o["updated_at"] === "string") keep(o["id"], o["updated_at"]);
+  for (const v of Object.values(o)) if (v && typeof v === "object") remember(v, depth + 1);
+}
+
+/**
+ * Only ever moves forward: answers can arrive out of order (two quick saves,
+ * or a list read that started before a save), and an older time kept here
+ * would make the next save look like it came after somebody else's change.
+ */
+function keep(id: string, version: string): void {
+  const now = versions.get(id);
+  if (!now || version > now) versions.set(id, version);
+}
+
+/** A file attached or removed: the server names the record's new version in two headers. */
+function rememberHeaders(response: Response): void {
+  const id = response.headers.get("x-record-id");
+  const version = response.headers.get("x-record-version");
+  if (id && version) keep(id, version);
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { accept: "application/json" };
   if (body !== undefined) headers["content-type"] = "application/json";
   if (method !== "GET") headers[CSRF_HEADER] = csrfToken();
+  const recordId = method === "PATCH" ? RECORD_PATH.exec(path)?.[1] : undefined;
+  const seen = recordId ? versions.get(recordId) : undefined;
+  if (seen) headers["x-record-version"] = seen;
+  if (recordId) versions.delete(recordId);
 
   const response = await fetch(path, {
     method,
@@ -32,6 +79,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
+  if (response.ok) rememberHeaders(response);
   if (response.status === 204) return undefined as T;
 
   const payload = await response.json().catch(() => ({}));
@@ -53,9 +101,12 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     err.detail = payload.detail;
     // The session expired or was revoked — the shell listens for this.
     if (response.status === 401) window.dispatchEvent(new CustomEvent("offset:signed-out"));
+    if (response.status === 409 && recordId && seen) keep(recordId, seen);
     throw err;
   }
 
+  // A read, and a save too: the saved record comes back with its new version.
+  remember(payload);
   return payload as T;
 }
 
@@ -84,6 +135,8 @@ async function upload<T>(path: string, body: FormData): Promise<T> {
     if (response.status === 401) window.dispatchEvent(new CustomEvent("offset:signed-out"));
     throw err;
   }
+  rememberHeaders(response);
+  remember(payload);
   return payload as T;
 }
 
@@ -273,6 +326,30 @@ export const auth = {
     api.post<{ ok: true; message: string }>("/api/v1/auth/forgot", { identifier }),
   changePassword: (body: { currentPassword?: string; newPassword: string }) =>
     api.post<{ user: SessionUser }>("/api/v1/auth/password", body),
+};
+
+export interface SettingsEvent { action: string; actor: string; at: string }
+
+/** Settings → Overview: every section's state, recent history, and the server's facts. */
+export interface SettingsOverview {
+  server: {
+    version: string;
+    installKind: "docker" | "linux" | "windows" | "none";
+    timeZone: string;
+    uptimeSeconds: number;
+    databaseBytes: number;
+    evidence: { bytes: number; files: number; partial: boolean };
+    backups: { enabled: boolean; keep: number; count: number; last: { at: string; kind: string; bytes: number } | null };
+    people: Record<string, number>;
+  };
+  https: { on: boolean; source: string };
+  email: { enabled: boolean; provider: string | null; sender: string | null; lastTest: SettingsEvent | null };
+  digest: { enabled: boolean; recipients: number; horizonDays: number; lastSent: string | null };
+  history: Record<string, SettingsEvent[]>;
+}
+
+export const settingsOverview = {
+  get: () => api.get<SettingsOverview>("/api/v1/settings/overview"),
 };
 
 export const controls = {
@@ -494,6 +571,8 @@ export interface Pack {
    * `statementOfApplicability`. One codebase, three products, decided here.
    */
   features?: Record<string, boolean>;
+  /** The words the readiness screens use for this framework: who audits, what they raise. */
+  readiness?: ReadinessWords;
 }
 
 export interface Programme {
@@ -625,6 +704,8 @@ export interface ReportInfo {
   id: string;
   title: string;
   description: string;
+  /** The last export, from the audit log. Absent on servers older than the field. */
+  lastDownloaded?: { at: string; by: string } | null;
 }
 
 export const reports = {
@@ -665,6 +746,13 @@ export interface BrandLogo {
   filename: string;
   bytes: number;
 }
+
+export const organisation = {
+  get: () =>
+    api.get<{ organisation: { name: string } }>("/api/v1/settings/organisation").then((r) => r.organisation.name),
+  set: (name: string) =>
+    api.put<{ organisation: { name: string } }>("/api/v1/settings/organisation", { name }).then((r) => r.organisation.name),
+};
 
 export const branding = {
   get: () =>
@@ -955,6 +1043,75 @@ export const controlTests = {
     api.post<{ test: ControlTest }>(`/api/v1/controls/${controlId}/tests`, body).then((r) => r.test),
   remove: (controlId: string, testId: string) =>
     api.delete<void>(`/api/v1/controls/${controlId}/tests/${testId}`),
+};
+
+// ── readiness: what an auditor would find, what to fix first, quick wins ─────
+
+export interface LikelyFinding {
+  id: string;
+  ref: string;
+  title: string;
+  label: "Fail" | "Gap" | "Stale" | "Partial";
+  says: string;
+  fix: string;
+  action: { label: string; route: string };
+  weight: number;
+  controlId?: string;
+}
+
+export interface QuickWin {
+  id: string;
+  title: string;
+  count: number;
+  minutes: number;
+  route: string;
+}
+
+/** The words this framework uses, from the pack's `readiness` block. */
+export interface ReadinessWords {
+  auditor: string;
+  auditorShort: string;
+  finding: string;
+  findings: string;
+  keyDate: string;
+  ledBy: string;
+}
+
+/** The next external audit: the date everything aims at. */
+export interface KeyDate {
+  title: string;
+  date: string;
+  ledBy: string;
+  daysTo: number;
+}
+
+export interface Readiness {
+  ranAt: string;
+  keyDate: KeyDate | null;
+  words: ReadinessWords;
+  findings: LikelyFinding[];
+  fixFirst: LikelyFinding[];
+  quickWins: QuickWin[];
+}
+
+export interface ReadinessDashboard {
+  readyPct: number;
+  keyDate: KeyDate | null;
+  milestones: { kind: string; date: string }[];
+  projectedReady: string | null;
+  trend: { day: string; pct: number }[];
+  lens: { ready: number; questions: number; findings: number; total: number };
+  team: { owner: string; total: number; implemented: number }[];
+  weakest: { theme: string; name: string; pct: number; implemented: number; total: number } | null;
+  weekChange: number;
+}
+
+export const readiness = {
+  get: () => api.get<Readiness>("/api/v1/readiness"),
+  dashboard: () => api.get<ReadinessDashboard>("/api/v1/readiness/dashboard"),
+  /** One owner for a whole theme, or the whole theme out of scope with a reason. */
+  bulk: (body: { theme: string; owner?: string; outOfScope?: string }) =>
+    api.post<{ updated: number }>("/api/v1/controls/bulk", body),
 };
 
 // ── example data ─────────────────────────────────────────────────────────────

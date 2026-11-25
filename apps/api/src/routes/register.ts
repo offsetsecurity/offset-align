@@ -7,6 +7,7 @@ import { canRead, canWrite, requireAuth, assertCanWrite } from "../auth/rbac.js"
 import { audit } from "../audit/audit.js";
 import { notFound } from "../lib/errors.js";
 import { removeAttachmentsOf } from "./attachments.js";
+import { assertUnchanged, changedMeanwhile, versioned } from "../lib/record-version.js";
 
 /**
  * A CRUD register: list, read, create, update, delete, with link tables.
@@ -129,8 +130,22 @@ export function registerRoutes<T extends z.ZodRawShape>(spec: RegisterSpec<T>) {
   const order = spec.orderBy ?? "t.seq";
 
   return async function routes(app: FastifyInstance): Promise<void> {
-    app.get(base, { preHandler: canRead }, async () => {
-      const { rows } = await query<Record<string, unknown>>(`${select} order by ${order}`);
+    app.get(base, { preHandler: canRead }, async (request) => {
+      const q = z
+        .object({
+          limit: z.coerce.number().int().min(1).max(500).optional(),
+          offset: z.coerce.number().int().min(0).max(1_000_000).optional(),
+        })
+        .parse(request.query);
+      // `limit` and `offset` are optional. The screens never send them and get
+      // the whole list as before; a client may ask for one page, so the database
+      // reads one page and not every row (a list of 5,000 took seconds).
+      if (q.limit !== undefined) {
+        const { rows } = await query<Record<string, unknown>>(`${select} order by ${order}, t.id limit ${q.limit} offset ${q.offset ?? 0}`);
+        const total = (await query<{ n: number }>(`select count(*) as n from ${spec.table}`)).rows[0]?.n ?? 0;
+        return { [spec.path]: rows.map(hydrate), total: Number(total) };
+      }
+      const { rows } = await query<Record<string, unknown>>(`${select} order by ${order}, t.id`);
       return { [spec.path]: rows.map(hydrate) };
     });
 
@@ -192,6 +207,7 @@ export function registerRoutes<T extends z.ZodRawShape>(spec: RegisterSpec<T>) {
       );
       const before = existingRows[0];
       if (!before) throw notFound(`${spec.label} not found.`);
+      assertUnchanged(request, before);
       spec.validate?.(body, before);
 
       const updated = await withTransaction(async (tx) => {
@@ -201,11 +217,14 @@ export function registerRoutes<T extends z.ZodRawShape>(spec: RegisterSpec<T>) {
         let row = before;
         if (entries.length) {
           const sets = entries.map(([k], i) => `${spec.columns[k]} = $${i + 2}`);
+          const params: unknown[] = [id, ...entries.map(([, v]) => v ?? null)];
+          const same = versioned(request, before, sets, params);
           const { rows } = await tx.query<Record<string, unknown>>(
-            `update ${spec.table} set ${sets.join(", ")} where id = $1 returning *`,
-            [id, ...entries.map(([, v]) => v ?? null)],
+            `update ${spec.table} set ${sets.join(", ")} where id = $1${same} returning *`,
+            params,
           );
-          row = rows[0]!;
+          if (!rows[0]) throw changedMeanwhile();
+          row = rows[0];
         }
         await replaceLinks(tx, spec as RegisterSpec<z.ZodRawShape>, id, body);
         return row;

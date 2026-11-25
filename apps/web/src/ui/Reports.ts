@@ -3,6 +3,7 @@ import type { VNode } from "preact";
 import { html } from "./html.js";
 import { reports, type ReportInfo } from "../persistence/apiClient.js";
 import { Branding } from "./Branding.js";
+import { ReportsBoard } from "./ReportsBoard.js";
 
 /**
  * Reports.
@@ -12,7 +13,12 @@ import { Branding } from "./Branding.js";
  * as a message on the card instead of dumping the browser on a broken page,
  * and so the button can say it is working while a long report renders.
  */
-export function Reports({ isAdmin }: { isAdmin: boolean }): VNode {
+export function Reports({ isAdmin, board = false, scored = false }: { isAdmin: boolean; board?: boolean; scored?: boolean }): VNode {
+  // Products with the board paper lay this screen out by who reads each report.
+  return board ? html`<${ReportsBoard} isAdmin=${isAdmin} scored=${scored} />` : html`<${ReportGrid} isAdmin=${isAdmin} />`;
+}
+
+function ReportGrid({ isAdmin }: { isAdmin: boolean }): VNode {
   const [list, setList] = useState<ReportInfo[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<Record<string, boolean>>({});

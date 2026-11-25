@@ -12,6 +12,7 @@ import { audit } from "../audit/audit.js";
 import { badRequest, notFound } from "../lib/errors.js";
 import { config } from "../config.js";
 import { ageDaysSql, freshnessSql } from "../lib/time.js";
+import { assertUnchanged, changedMeanwhile, tellNewVersion, versioned } from "../lib/record-version.js";
 
 const idParam = z.object({ id: z.string().uuid() });
 
@@ -74,18 +75,31 @@ export async function evidenceRoutes(app: FastifyInstance): Promise<void> {
       .object({
         freshness: z.enum(["fresh", "ageing", "due", "stale", "unknown"]).optional(),
         owner: z.string().optional(),
+        limit: z.coerce.number().int().min(1).max(500).optional(),
+        offset: z.coerce.number().int().min(0).max(1_000_000).optional(),
       })
       .parse(request.query);
+    // `limit` and `offset` are optional. The screens never send them and get
+    // the whole list as before; a client may ask for one page, so the database
+    // reads one page and not every row (a list of 5,000 took seconds).
+    // Freshness is worked out after the read, so it cannot be paged in the database.
+    if (q.limit !== undefined && q.freshness) throw badRequest("Page a list or filter it by freshness, not both.");
+    const paged = q.limit !== undefined;
 
     const { rows } = await query<EvidenceRow>(
       `select e.*, ${FRESHNESS}, ${CONTROL_IDS}
          from evidence e
         ${q.owner ? "where e.owner = $1" : ""}
-        order by e.collected_date desc, e.name`,
+        order by e.collected_date desc, e.name, e.id
+        ${paged ? `limit ${q.limit} offset ${q.offset ?? 0}` : ""}`,
       q.owner ? [q.owner] : [],
     );
 
     const hydrated = rows.map(hydrate);
+    if (paged) {
+      const total = (await query<{ n: number }>(`select count(*) as n from evidence e ${q.owner ? "where e.owner = $1" : ""}`, q.owner ? [q.owner] : [])).rows[0]?.n ?? 0;
+      return { evidence: hydrated, total: Number(total) };
+    }
     return {
       evidence: q.freshness ? hydrated.filter((r) => r["freshness"] === q.freshness) : hydrated,
     };
@@ -164,6 +178,7 @@ export async function evidenceRoutes(app: FastifyInstance): Promise<void> {
     const { rows: existing } = await query("select * from evidence where id = $1", [id]);
     const before = existing[0];
     if (!before) throw notFound("Evidence not found.");
+    assertUnchanged(request, before);
 
     const COLUMN: Record<string, string> = {
       name: "name", type: "type", owner: "owner", ownerEmail: "owner_email",
@@ -175,11 +190,14 @@ export async function evidenceRoutes(app: FastifyInstance): Promise<void> {
       let row = before;
       if (entries.length) {
         const sets = entries.map(([k], i) => `${COLUMN[k]} = $${i + 2}`);
+        const params: unknown[] = [id, ...entries.map(([, v]) => v ?? null)];
+        const same = versioned(request, before, sets, params);
         const { rows } = await tx.query(
-          `update evidence set ${sets.join(", ")} where id = $1 returning *`,
-          [id, ...entries.map(([, v]) => v ?? null)],
+          `update evidence set ${sets.join(", ")} where id = $1${same} returning *`,
+          params,
         );
-        row = rows[0]!;
+        if (!rows[0]) throw changedMeanwhile();
+        row = rows[0];
       }
       // Links are replaced wholesale when supplied — simplest contract for the UI.
       if (body.controlIds !== undefined) await replaceLinks(tx, id, body.controlIds);
@@ -278,6 +296,7 @@ export async function evidenceRoutes(app: FastifyInstance): Promise<void> {
       after: { file: stored.name, bytes: stored.size, sha256: stored.sha256 },
     });
 
+    tellNewVersion(reply, rows[0]);
     reply.code(201);
     return { evidence: rows[0] };
   });
@@ -323,13 +342,15 @@ export async function evidenceRoutes(app: FastifyInstance): Promise<void> {
     if (!rows[0]) throw notFound("Evidence not found.");
     if (!rows[0].file_key) throw notFound("No file is attached to this evidence.");
 
-    await query(
+    const { rows: touched } = await query<{ id: string; updated_at: string }>(
       `update evidence
           set file_key = null, file_name = null, file_size = null, file_sha256 = null,
               updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-        where id = $1`,
+        where id = $1
+      returning id, updated_at`,
       [id],
     );
+    tellNewVersion(reply, touched[0]);
     await deleteStored(rows[0].file_key);
 
     await audit(request, {

@@ -4,6 +4,7 @@ import { canRead } from "../auth/rbac.js";
 import { audit } from "../audit/audit.js";
 import { notFound } from "../lib/errors.js";
 import { packMeta } from "../lib/pack.js";
+import { query } from "../db/pool.js";
 import { REPORTS, renderReport } from "../reports/definitions.js";
 import { todayIso } from "../lib/time.js";
 
@@ -29,11 +30,23 @@ export async function reportRoutes(app: FastifyInstance): Promise<void> {
     // A scored framework changes what a couple of these reports contain, so it
     // changes what they say they contain.
     const scored = Boolean((await packMeta()).features?.["maturity"]);
+    // Who took the last copy of each, and when: read from the audit log, which
+    // already records every export, so nothing new has to be kept.
+    const { rows: last } = await query<{ id: string; at: string; by: string }>(
+      `select a.entity_id as id, a.ts as at, coalesce(nullif(u.name, ''), a.actor_name) as by
+         from audit_log a
+         left join users u on u.id = a.actor_id
+         join (select entity_id, max(id) as id from audit_log
+                where entity = 'report' and action = 'Report generated' group by entity_id) m
+           on m.id = a.id`,
+    );
+    const lastOf = new Map(last.map((l) => [l.id, { at: l.at, by: l.by }]));
     return {
       reports: (await available()).map((r) => ({
         id: r.id,
         title: r.title,
         description: (scored && r.scoredDescription) || r.description,
+        lastDownloaded: lastOf.get(r.id) ?? null,
       })),
     };
   });

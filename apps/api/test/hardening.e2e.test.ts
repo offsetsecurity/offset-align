@@ -136,7 +136,7 @@ maybe("security audit findings", () => {
     expect(JSON.stringify(risk)).toContain(control);
   });
 
-  // Docker installs before 0.2.34 lost uploads on every update.
+  // Docker installs before 0.2.47 lost uploads on every update.
   it("puts back a document that went missing, from the newest backup that holds it", async () => {
     const res = await uploadAndFetch("recover-me.pdf");
     expect(res.status).toBe(200);

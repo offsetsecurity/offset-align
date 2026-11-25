@@ -41,9 +41,16 @@ import { auditRoutes } from "./routes/audit.js";
 import { certificateRoutes } from "./routes/certificate.js";
 import { threadRoutes } from "./routes/thread.js";
 import { templateRoutes } from "./routes/templates.js";
+import { readinessRoutes } from "./routes/readiness.js";
+import { settingsOverviewRoutes } from "./routes/settings-overview.js";
 import { restoreInProgress } from "./backup/service.js";
 import type { TlsOptions } from "./tls/certificate.js";
 import { dualServerFactory } from "./tls/server.js";
+import { findControlCharacters } from "./lib/text-safety.js";
+import { startBodyTimer, stopBodyTimer } from "./lib/long-request.js";
+
+/** The most a JSON request may carry. Uploads have their own, larger limit. */
+const JSON_BODY_LIMIT = 2 * 1024 * 1024;
 
 /** All a session signed in with a temporary password may reach. */
 const MUST_CHANGE_ALLOWED = new Set([
@@ -59,6 +66,10 @@ export interface BuildOptions {
   https?: TlsOptions;
   /** Filled with every route and the roles its guard allows; used by the access tests. */
   routeTable?: { method: string; url: string; allowed: readonly string[] | null }[];
+  /** For tests: a shorter idle timeout than the setting, to watch a stalled connection close. */
+  socketIdleTimeoutMs?: number;
+  /** For tests: a shorter limit for a request body to arrive than the setting. */
+  bodyTimeoutMs?: number;
 }
 
 export async function buildApp(options: BuildOptions = {}): Promise<FastifyInstance> {
@@ -86,7 +97,14 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
 
   const app = Fastify({
     ...logging,
-    ...(options.https ? { serverFactory: dualServerFactory(options.https) } : {}),
+    ...(options.https
+      ? {
+          serverFactory: dualServerFactory(options.https, {
+            idleMs: options.socketIdleTimeoutMs ?? config.SOCKET_IDLE_TIMEOUT_MS,
+            requestMs: config.REQUEST_TIMEOUT_MS,
+          }),
+        }
+      : {}),
     // Only the proxies named in TRUST_PROXY; see config.ts for why not everyone.
     trustProxy:
       config.TRUST_PROXY === "true"
@@ -95,7 +113,26 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
           ? false
           : config.TRUST_PROXY,
     genReqId: () => crypto.randomUUID(),
-    bodyLimit: 2 * 1024 * 1024,
+    bodyLimit: JSON_BODY_LIMIT,
+    // A connection that goes quiet, or a request that never finishes arriving,
+    // is closed. See SOCKET_IDLE_TIMEOUT_MS in config.ts for why.
+    connectionTimeout: options.socketIdleTimeoutMs ?? config.SOCKET_IDLE_TIMEOUT_MS,
+    requestTimeout: config.REQUEST_TIMEOUT_MS,
+  });
+
+  // A body that trickles in is cut off long before the server-wide hour.
+  const bodyMs = options.bodyTimeoutMs ?? config.BODY_TIMEOUT_MS;
+  app.addHook("onRequest", async (request) => startBodyTimer(request, bodyMs));
+  // Only once the body has fully arrived: after an early refusal (401, 413)
+  // Node keeps reading the rest, and the limit must still end a trickle.
+  app.addHook("onResponse", async (request) => {
+    if (request.raw.complete) stopBodyTimer(request);
+  });
+
+  // Text that cannot be meant: refused before any route sees it.
+  app.addHook("preValidation", async (request) => {
+    const bad = findControlCharacters(request.body);
+    if (bad) throw new HttpError(400, bad);
   });
 
   if (options.routeTable) {
@@ -112,7 +149,8 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
+        // No inline styles: the page's styles are one file served from here.
+        styleSrc: ["'self'"],
         imgSrc: ["'self'", "data:"],
         // Fonts ship with the product; nothing is fetched from elsewhere.
         fontSrc: ["'self'", "data:"],
@@ -123,6 +161,8 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
         formAction: ["'self'"],
       },
     },
+    // The page embeds nothing from elsewhere, so this costs nothing and closes a ZAP finding.
+    crossOriginEmbedderPolicy: { policy: "require-corp" },
     hsts: isProd ? { maxAge: 31_536_000, includeSubDomains: true } : false,
   });
 
@@ -130,6 +170,23 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   // microphone or anybody's location, so the page is told it may not ask.
   app.addHook("onRequest", async (_request, reply) => {
     reply.header("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
+  });
+
+  // A JSON body that says up front it is over the limit is refused before a byte
+  // is used (N1, 14 Nov 2026): before, a client sending several megabytes to an
+  // unauthenticated address was told nothing. The connection is not cut after
+  // the 413: cutting it while the client is still sending makes the client's
+  // system throw the 413 away (N1b, 15 Nov 2026). The request time limit still
+  // ends a client that sends forever.
+  app.addHook("onRequest", async (request, _reply) => {
+    const declared = Number(request.headers["content-length"] ?? 0);
+    const json = String(request.headers["content-type"] ?? "").toLowerCase().startsWith("application/json");
+    if (json && declared > JSON_BODY_LIMIT) {
+      // The rest of the body is read and thrown away, so a client that sends the whole
+      // body before it reads the answer (Node's fetch does) finishes sending and gets the 413.
+      request.raw.resume();
+      throw new HttpError(413, "This request is too large to save.");
+    }
   });
 
   await app.register(cookie, { secret: config.SESSION_SECRET });
@@ -166,8 +223,16 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     // temporary password read from somebody's inbox is never a way in to the
     // data itself.
     if (request.user?.mustChangePassword) {
-      const path = request.url.split("?")[0] ?? "";
-      if (path.startsWith("/api/") && !MUST_CHANGE_ALLOWED.has(path)) {
+      // The address the router actually matched, not the text the caller typed:
+      // "/%61pi/v1/..." reaches the same route as "/api/v1/..." but does not
+      // start with "/api/" (F1 of the second review, 14 Nov 2026). The raw and
+      // the decoded text are checked as well, so nothing slips between.
+      const raw = request.url.split("?")[0] ?? "";
+      let decoded = raw;
+      try { decoded = decodeURIComponent(raw); } catch { /* an undecodable address is judged as typed */ }
+      const matched = request.routeOptions?.url ?? "";
+      const isApi = [matched, raw, decoded].some((p) => p.startsWith("/api/"));
+      if (isApi && !MUST_CHANGE_ALLOWED.has(matched || decoded)) {
         throw new HttpError(403, "Choose a new password before continuing.");
       }
     }
@@ -190,6 +255,20 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     // the server was broken rather than to slow down.
     const status = (err as { statusCode?: unknown }).statusCode;
     if (typeof status === "number" && status >= 400 && status < 500) {
+      // A body that grew past the limit while it was being read (no length
+      // declared up front): read and drop the rest, so a client that sends it
+      // all before reading the answer still gets the 413 (N1).
+      if (status === 413) {
+        request.raw.resume();
+        // Fastify asks for the connection to be closed after a body it could
+        // not read; with a client still sending, that close throws the 413 away
+        // (found 15 Nov 2026 for a body with no length declared). For such a
+        // body the rest is drained instead, and the body limit
+        // (BODY_TIMEOUT_MS) still ends a client that sends forever. A body
+        // that declared a length over the limit keeps Fastify's close, so
+        // nobody can make the server drain a huge declared size.
+        if (request.headers["content-length"] === undefined) reply.removeHeader("connection");
+      }
       return reply.code(status).send({ error: (err as Error).message });
     }
     // A link to a control, risk or record that does not exist, perhaps
@@ -198,6 +277,17 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     if ((err as { code?: unknown }).code === "SQLITE_CONSTRAINT_FOREIGNKEY") {
       return reply.code(400).send({
         error: "Something this links to no longer exists. Refresh the page and try again.",
+      });
+    }
+    // The server's disk is full (the file system or the database ran out of
+    // room). Nothing was saved: the file being written is removed and SQLite
+    // rolls the change back. Say so in plain words, so the person knows it is
+    // not their mistake and whom to ask (GL-1, 15 Nov 2026).
+    const code = (err as { code?: unknown }).code;
+    if (code === "ENOSPC" || code === "EDQUOT" || code === "SQLITE_FULL") {
+      request.log.error({ err }, "the disk is full");
+      return reply.code(507).send({
+        error: "The server's disk is full, so this was not saved. Ask the person who runs the server to free some space, then try again.",
       });
     }
     request.log.error({ err }, "unhandled error");
@@ -229,6 +319,7 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   await app.register(journeyRoutes);
   await app.register(threadRoutes);
   await app.register(templateRoutes);
+  await app.register(readinessRoutes);
   await app.register(baselineRoutes);
   await app.register(reportRoutes);
   await app.register(settingsRoutes);
@@ -239,6 +330,7 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   await app.register(updateRoutes);
   await app.register(backupRoutes);
   await app.register(auditRoutes);
+  await app.register(settingsOverviewRoutes);
 
   // ── the single-page app ───────────────────────────────────────────────────
   /**
