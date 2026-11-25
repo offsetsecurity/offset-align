@@ -15,11 +15,11 @@ import { branding, type BrandLogo } from "../persistence/apiClient.js";
  * every export afterwards.
  */
 
-const MAX_BYTES = 512 * 1024;
-const ACCEPT = "image/png,image/jpeg,image/svg+xml";
+export const MAX_BYTES = 512 * 1024;
+export const ACCEPT = "image/png,image/jpeg,image/svg+xml";
 
 /** Reads a file as either raw SVG text or a data URI, whichever the PDF wants. */
-function readFile(file: File): Promise<{ kind: "image" | "svg"; data: string }> {
+export function readFile(file: File): Promise<{ kind: "image" | "svg"; data: string }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("That file could not be read."));

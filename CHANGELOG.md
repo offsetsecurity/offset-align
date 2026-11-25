@@ -18,6 +18,11 @@ Every release is numbered x.y.z, for example 1.4.2:
 ## [Unreleased]
 
 ### Changed
+- **Offset Align has the global Offset UI.** The same screens as every Offset
+  product: the menu, top bar, account menu, Ctrl K, windows and sign-in. Settings
+  is now one page with a tab for each part and an Overview of them all. The Plan
+  page has a "Run a mock audit" button that shows what an assessor would find
+  today. The Auditor view and its walk-through are new.
 - **Offset Align is now open source,** under the Apache License 2.0. It is still
   free. You may use, change and share it. See `LICENSE`.
 

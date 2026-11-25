@@ -15,7 +15,8 @@
     "ismsRegisters": true,
     "calendar": true,
     "help": true,
-    "demoData": true
+    "demoData": true,
+    "readiness": true
   },
   "themeLabel": "Function",
   "itemLabel": "Subcategory",
@@ -23,5 +24,21 @@
     "functions": 6,
     "categories": 22,
     "subcategories": 106
+  },
+  "readiness": {
+    "auditor": "CSF assessor",
+    "auditorShort": "assessor",
+    "finding": "finding",
+    "findings": "findings",
+    "keyDate": "CSF assessment",
+    "ledBy": "Assessed by",
+    "refs": {
+      "policy": "GV.PO-01",
+      "finding": "ID.IM-01",
+      "vendor": "GV.SC-07",
+      "audit": "ID.IM-02",
+      "review": "GV.OV-01",
+      "risk": "ID.RA-05"
+    }
   }
 }
