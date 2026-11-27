@@ -85,7 +85,7 @@ changing the wording of a requirement never means touching the application.
 | | |
 |---|---|
 | Framework | NIST Cybersecurity Framework 2.0 |
-| What you work through | 106 subcategorys, in 6 functions |
+| What you work through | 106 subcategories, in 6 functions |
 | Called | Subcategory / Function |
 | Guidance per item | Plain English: what it means, what to do, what an assessor looks for, what proof to keep |
 | Get ready | 7 stages, 24 steps, 18 checked for you |

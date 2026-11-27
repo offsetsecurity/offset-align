@@ -20,7 +20,7 @@ for administrators.
 
 ![Offset Align dashboard](docs/screenshots/dashboard.png)
 
-![Offset Align control register](docs/screenshots/controls.png)
+![Offset Align subcategory register](docs/screenshots/controls.png)
 
 <sub>Screenshots from the current release, filled with the built-in example data. The people and the company are made up.</sub>
 

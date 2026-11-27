@@ -17,6 +17,8 @@ Every release is numbered x.y.z, for example 1.4.2:
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-26
+
 ### Changed
 - **Offset Align has the global Offset UI.** The same screens as every Offset
   product: the menu, top bar, account menu, Ctrl K, windows and sign-in. Settings
