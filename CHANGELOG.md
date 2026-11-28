@@ -17,6 +17,21 @@ Every release is numbered x.y.z, for example 1.4.2:
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-28
+
+### Fixed
+- **The sign-in page shows this product's own framework.** It showed ISO 27001
+  example rows and "ready for certification".
+- **Screen readers can name every search box and owner box.** On the register
+  of controls that was over 1,000 fields with no name.
+- **The Plan page makes no failing request.** It asked for a list of document
+  templates this product does not have, which showed as an error in the
+  browser console.
+- **The updater image takes Docker CLI 29.10.1 and compose 5.8.0.** Two of the
+  three known denial-of-service bugs in its compose are gone; the third has no
+  fixed compose release yet.
+- **The images carry no package manager or download tools** (apk, wget, nc).
+
 ## [0.3.0] - 2026-11-26
 
 ### Changed
